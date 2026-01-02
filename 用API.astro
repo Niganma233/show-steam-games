@@ -1,0 +1,562 @@
+---
+import ImageWrapper from "../components/misc/ImageWrapper.astro";
+import { sidebarLayoutConfig, siteConfig } from "../config";
+import MainGridLayout from "../layouts/MainGridLayout.astro";
+
+// --- 配置区域 ---
+
+// 1. Steam API 配置 (建议移至 src/config.ts 或环境变量)
+const STEAM_API_KEY = "你的steamAPI"; 
+const STEAM_USER_ID = "你的steam user id"; // 例如: 76561198xxxxxxxxx
+
+// 2. 页面配置
+const PAGE_TITLE = "游戏库";
+const PAGE_SUBTITLE = "Steam 游戏收藏与游玩记录";
+
+// 填你不想展示的游戏 ID
+const HIDDEN_GAME_IDS = [
+  123456, //示例
+];
+
+// 3. 检查页面是否启用 (需要在 config.ts 中添加对应字段，或直接注释掉此检查)
+// if (!siteConfig.featurePages.games) {
+// 	return Astro.redirect("/404/");
+// }
+
+// --- 数据获取与处理 ---
+
+// 检查是否为双侧边栏模式
+const isBothSidebarMode = sidebarLayoutConfig.position === "both";
+
+interface SteamGame {
+    appid: number;
+    name: string;
+    playtime_forever: number; // 分钟
+    playtime_2weeks?: number; // 分钟
+    img_icon_url: string;
+    rtime_last_played: number;
+}
+
+interface GameItem {
+    id: number;
+    title: string;
+    cover: string;
+    status: "playing" | "played" | "backlog"; // 在玩 | 已玩 | 吃灰
+    playtimeHours: string;
+    lastPlayed: number;
+    link: string;
+    description: string; // Steam 列表接口不返回简介，用游玩时长文案代替
+}
+
+async function fetchSteamData() {
+    // 检查 API Key 是否配置
+    if (STEAM_API_KEY === "你的_STEAM_API_KEY") return [];
+
+    try {
+        // 1. 获取所有拥有的游戏
+        const response = await fetch(
+            `http://api.steampowered.com/IPlayerService/GetOwnedGames/v0001/?key=${STEAM_API_KEY}&steamid=${STEAM_USER_ID}&include_appinfo=true&include_played_free_games=true&format=json`
+        );
+        const data = await response.json();
+        
+        // 2. 获取最近游玩的游戏
+        const recentResponse = await fetch(
+            `http://api.steampowered.com/IPlayerService/GetRecentlyPlayedGames/v0001/?key=${STEAM_API_KEY}&steamid=${STEAM_USER_ID}&format=json`
+        );
+        const recentData = await recentResponse.json();
+        const recentGameIds = recentData.response?.games?.map((g: any) => g.appid) || [];
+
+        if (!data.response || !data.response.games) return [];
+
+        // --- 核心修改在这里 ---
+        let games = data.response.games.filter((g: SteamGame) => {
+            // A. 检查是否在黑名单中 (必须使用你定义的变量名 HIDDEN_GAME_IDS)
+            if (typeof HIDDEN_GAME_IDS !== 'undefined' && HIDDEN_GAME_IDS.includes(g.appid)) {
+                return false; // 如果在黑名单里，直接丢弃
+            }
+
+            // B. 基础规则：游玩时间 > 0 分钟，或者最近在玩
+            return g.playtime_forever > 0 || recentGameIds.includes(g.appid);
+        });
+        // --------------------
+        
+        // 排序
+        games.sort((a: SteamGame, b: SteamGame) => b.rtime_last_played - a.rtime_last_played);
+
+        // 转换为页面格式
+        return games.map((game: SteamGame) => {
+            const isPlaying = recentGameIds.includes(game.appid);
+            let status: "playing" | "played" | "backlog" = "played";
+            
+            if (isPlaying) status = "playing";
+            else if (game.playtime_forever < 60) status = "backlog";
+            else status = "played";
+
+            const coverUrl = `https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/${game.appid}/library_600x900.jpg`;
+
+            return {
+                id: game.appid,
+                title: game.name,
+                cover: coverUrl,
+                status: status,
+                playtimeHours: (game.playtime_forever / 60).toFixed(1),
+                lastPlayed: game.rtime_last_played,
+                link: `https://store.steampowered.com/app/${game.appid}/`,
+                description: `总时数: ${(game.playtime_forever / 60).toFixed(1)} 小时`
+            };
+        });
+    } catch (error) {
+        console.error("Error fetching Steam data:", error);
+        return [];
+    }
+}
+
+// 简单的本地化映射 (替代 i18nKey)
+const i18nLocal = {
+    title: PAGE_TITLE,
+    subtitle: PAGE_SUBTITLE,
+    filterAll: "全部",
+    statusPlaying: "最近在玩",
+    statusPlayed: "已入库",
+    statusBacklog: "吃灰中", // 这里的文案可以自己改
+    empty: "未获取到游戏数据",
+    emptyDesc: "请检查 API Key 配置或 Steam 隐私设置（需公开游戏详情）。",
+    hours: "小时"
+};
+
+// 获取数据
+const gameList = await fetchSteamData();
+
+// 状态样式配置
+function getStatusInfo(status: string) {
+    switch (status) {
+        case "playing":
+            return {
+                text: i18nLocal.statusPlaying,
+                class: "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300",
+                icon: "🎮",
+            };
+        case "played":
+            return {
+                text: i18nLocal.statusPlayed,
+                class: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300",
+                icon: "✓",
+            };
+        case "backlog":
+            return {
+                text: i18nLocal.statusBacklog,
+                class: "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300",
+                icon: "📦",
+            };
+        default:
+            return {
+                text: status,
+                class: "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300",
+                icon: "?",
+            };
+    }
+}
+
+const stats = {
+    total: gameList.length,
+    playing: gameList.filter(g => g.status === 'playing').length,
+    totalHours: Math.round(gameList.reduce((acc, cur) => acc + parseFloat(cur.playtimeHours), 0))
+};
+---
+
+<MainGridLayout title={i18nLocal.title} description={i18nLocal.subtitle}>
+  <div class="flex w-full rounded-[var(--radius-large)] overflow-hidden relative min-h-32">
+    <div class="card-base z-10 px-9 py-6 relative w-full">
+      <!-- 页面标题 -->
+      <div class="relative w-full mb-8">
+        <div class="mb-6">
+          <h1 class="text-4xl font-bold text-black/90 dark:text-white/90 mb-2 relative
+                    before:w-1 before:h-8 before:rounded-md before:bg-[var(--primary)]
+                    before:absolute before:top-1/2 before:-translate-y-1/2 before:-left-4">
+            {i18nLocal.title}
+          </h1>
+          <p class="text-black/75 dark:text-white/75">
+            {i18nLocal.subtitle} · 共 {stats.total} 款游戏 · 累计 {stats.totalHours} {i18nLocal.hours}
+          </p>
+        </div>
+        
+        <!-- 过滤按钮 -->
+        <div class="mb-6">
+          <div class="filter-container flex flex-wrap gap-2">
+            <button class="filter-tag active" data-status="all">{i18nLocal.filterAll}</button>
+            <button class="filter-tag" data-status="playing">{i18nLocal.statusPlaying}</button>
+            <button class="filter-tag" data-status="played">{i18nLocal.statusPlayed}</button>
+            <button class="filter-tag" data-status="backlog">{i18nLocal.statusBacklog}</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- 游戏列表 -->
+      <div class="mb-8">
+        {gameList.length > 0 ? (
+          <div id="anime-list-container" class={`anime-grid-container grid gap-4 md:gap-6 list-mode ${
+            isBothSidebarMode ? "both-sidebar" : "single-sidebar"
+          }`}>
+            {gameList.map(game => {
+              const statusInfo = getStatusInfo(game.status);
+              
+              return (
+                <div class="group relative bg-[var(--card-bg)] border border-[var(--line-divider)] rounded-[var(--radius-large)] overflow-hidden transition-all duration-300 hover:shadow-lg hover:scale-[1.02]" data-anime-status={game.status}>
+                  <!-- 封面区域 - 竖屏比例 -->
+                  <div class="relative aspect-[2/3] overflow-hidden bg-gray-200 dark:bg-gray-800">
+                    <a href={game.link} target="_blank" rel="noopener noreferrer" class="block w-full h-full">
+                      <ImageWrapper 
+                        src={game.cover} 
+                        alt={game.title}
+                        class="w-full h-full object-cover transition-transform duration-300 group-hover:scale-110"
+                      />
+                      <div class="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+                        <div class="absolute inset-0 flex items-center justify-center">
+                          <div class="w-12 h-12 rounded-full bg-white/90 flex items-center justify-center">
+                            <svg class="w-6 h-6 text-gray-800 ml-1" fill="currentColor" viewBox="0 0 24 24">
+                              <path d="M8 5v14l11-7z"/>
+                            </svg>
+                          </div>
+                        </div>
+                      </div>
+                    </a>
+                    
+                    <!-- 状态标签 -->
+                    <div class={`absolute top-2 left-2 px-2 py-1 rounded-md text-xs font-medium ${statusInfo.class}`}>
+                      <span class="mr-1">{statusInfo.icon}</span>
+                      <span>{statusInfo.text}</span>
+                    </div>
+                    
+                    <!-- 游玩时长标签 -->
+                    <div class="absolute top-2 right-2 bg-black/70 text-white px-2 py-1 rounded-md text-xs font-medium flex items-center gap-1">
+                      <svg class="w-3 h-3 text-yellow-400" fill="currentColor" viewBox="0 0 20 20">
+                        <path d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z"/>
+                      </svg>
+                      <span>{game.playtimeHours}h</span>
+                    </div>
+                  </div>
+                  
+                  <!-- 内容区域 -->
+                  <div class="p-3">
+                    <h3 class="text-sm font-bold text-black/90 dark:text-white/90 mb-1 line-clamp-2 leading-tight" title={game.title}>{game.title}</h3>
+                    <!-- 进度条背景 -->
+                    <div class="w-full bg-black/5 dark:bg-white/10 rounded-full h-1.5 mt-2 mb-1 overflow-hidden">
+                       <!-- 假进度条：如果有成就数据可以在这里计算，现在只是装饰，或者根据时长显示一个“满级”状态 -->
+                       <div class="bg-gradient-to-r from-[var(--primary)] to-[var(--primary)]/60 h-full rounded-full opacity-30" style={`width: ${Math.min(100, (parseFloat(game.playtimeHours) / 50) * 100)}%`}></div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <div class="text-center py-12">
+            <div class="text-5xl mb-4">🎮</div>
+            <h3 class="text-xl font-medium text-black/80 dark:text-white/80 mb-2">
+              {i18nLocal.empty}
+            </h3>
+            <p class="text-black/60 dark:text-white/60">
+              {i18nLocal.emptyDesc}
+            </p>
+          </div>
+        )}
+      </div>
+    </div>
+  </div>
+
+  <!-- 复用原有的脚本逻辑，这里只需要改一下变量名兼容性 -->
+  <script is:inline define:vars={{ isBothSidebarMode }}>
+  // 动画列表布局切换脚本 (与 Anime 页面保持一致)
+  (function() {
+    setTimeout(() => {
+      const animeListContainer = document.getElementById("anime-list-container"); // ID 保持不变以便复用 CSS
+      if (!animeListContainer) return;
+
+      if (typeof window.layoutManager !== 'undefined') {
+        window.layoutManager.init(isBothSidebarMode);
+        const currentLayout = window.layoutManager.getLayout();
+        updateAnimeListLayout(currentLayout);
+        window.layoutManager.checkScreenSizeAndAdjust();
+      } else {
+        setTimeout(() => {
+          if (typeof window.layoutManager !== 'undefined') {
+            window.layoutManager.init(isBothSidebarMode);
+            const currentLayout = window.layoutManager.getLayout();
+            updateAnimeListLayout(currentLayout);
+            window.layoutManager.checkScreenSizeAndAdjust();
+          }
+        }, 300);
+      }
+    }, 50);
+
+    function updateAnimeListLayout(layout) {
+      const animeListContainer = document.getElementById("anime-list-container");
+      if (!animeListContainer) return;
+
+      const animeItems = Array.from(document.querySelectorAll('[data-anime-status]'));
+      const firstPositions = new Map();
+      animeItems.forEach(item => {
+        const rect = item.getBoundingClientRect();
+        firstPositions.set(item, { left: rect.left, top: rect.top });
+      });
+      
+      animeListContainer.classList.remove("list-mode", "grid-mode");
+      
+      if (layout === "grid") {
+        animeListContainer.classList.add("grid-mode");
+        animeListContainer.classList.add("grid", "grid-cols-1", "md:grid-cols-2", "lg:grid-cols-3");
+        animeListContainer.classList.remove("flex", "flex-col");
+        const rightSidebar = document.querySelector('.right-sidebar-container');
+        if (rightSidebar) {
+            rightSidebar.style.display = 'none';
+            rightSidebar.classList.add('hidden-in-grid-mode');
+        }
+        const mainGrid = document.getElementById('main-grid');
+        if (mainGrid) {
+          mainGrid.style.gridTemplateColumns = '17.5rem 1fr';
+          mainGrid.classList.add('two-column-layout');
+        }
+      } else {
+        animeListContainer.classList.add("list-mode");
+        animeListContainer.classList.add("flex", "flex-col");
+        animeListContainer.classList.remove("grid", "grid-cols-1", "md:grid-cols-2", "lg:grid-cols-3");
+        const rightSidebar = document.querySelector('.right-sidebar-container');
+        if (rightSidebar) {
+            rightSidebar.style.display = '';
+            rightSidebar.classList.remove('hidden-in-grid-mode');
+        }
+        const mainGrid = document.getElementById('main-grid');
+        if (mainGrid) {
+          mainGrid.style.gridTemplateColumns = '';
+          mainGrid.classList.remove('two-column-layout');
+        }
+      }
+
+      requestAnimationFrame(() => {
+        const lastPositions = new Map();
+        animeItems.forEach(item => {
+          const rect = item.getBoundingClientRect();
+          lastPositions.set(item, { left: rect.left, top: rect.top });
+        });
+        
+        animeItems.forEach(item => {
+          const first = firstPositions.get(item);
+          const last = lastPositions.get(item);
+          if (first && last) {
+            const deltaX = first.left - last.left;
+            const deltaY = first.top - last.top;
+            item.style.transition = 'none';
+            item.style.transform = `translate(${deltaX}px, ${deltaY}px)`;
+          }
+        });
+        
+        requestAnimationFrame(() => {
+          animeItems.forEach((item, index) => {
+            setTimeout(() => {
+              item.classList.add('anime-animating');
+              item.style.transition = '';
+              item.style.transform = '';
+            }, index * 20);
+          });
+          setTimeout(() => {
+            animeItems.forEach(item => {
+              item.classList.remove('anime-animating');
+              item.style.transition = '';
+              item.style.transform = '';
+            });
+          }, 500 + animeItems.length * 20);
+        });
+      });
+    }
+
+    window.addEventListener("layoutChange", (event) => updateAnimeListLayout(event.detail.layout));
+  })();
+  </script>
+
+  <!-- 样式复用 Anime 页面的样式 -->
+  <style>
+    .card-base { container-type: inline-size; }
+    .anime-grid-container {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    .anime-grid-container.single-sidebar {
+      @container (min-width: 900px) { grid-template-columns: repeat(5, 1fr); }
+      @container (min-width: 600px) and (max-width: 899px) { grid-template-columns: repeat(3, 1fr); }
+      @container (max-width: 599px) { grid-template-columns: repeat(2, 1fr); }
+    }
+    .anime-grid-container.both-sidebar {
+      @container (min-width: 950px) { grid-template-columns: repeat(5, 1fr); }
+      @container (min-width: 650px) and (max-width: 949px) { grid-template-columns: repeat(4, 1fr); }
+      @container (min-width: 480px) and (max-width: 649px) { grid-template-columns: repeat(3, 1fr); }
+      @container (max-width: 479px) { grid-template-columns: repeat(2, 1fr); }
+    }
+    .filter-container { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+    .filter-tag {
+      padding: 0.5rem 1rem;
+      border: 1px solid var(--line-divider);
+      border-radius: var(--radius-large);
+      background: var(--btn-regular-bg);
+      color: var(--btn-content);
+      font-size: 0.875rem;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      white-space: nowrap;
+    }
+    .filter-tag:hover:not(.active) {
+      background: var(--btn-hover-bg);
+      border-color: var(--primary);
+      transform: translateY(-1px);
+    }
+    .filter-tag.active {
+      background: var(--primary);
+      color: white;
+      border-color: var(--primary);
+    }
+    .filter-tag.active:hover {
+        background: var(--primary) !important;
+        color: white !important;
+        border-color: var(--primary) !important;
+    }
+    
+    [data-anime-status] { transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1); }
+    #anime-list-container.grid-mode [data-anime-status]:hover {
+      transform: translateY(-8px) scale(1.02);
+      box-shadow: 0 12px 24px rgba(0, 0, 0, 0.15);
+      z-index: 10;
+    }
+    #anime-list-container.list-mode [data-anime-status]:hover {
+      transform: translateX(8px) scale(1.01);
+      box-shadow: 0 8px 16px rgba(0, 0, 0, 0.1);
+      z-index: 10;
+    }
+    [data-anime-status].anime-hidden { display: none; }
+    [data-anime-status].anime-animating {
+      transition: transform 0.5s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    [data-anime-status].anime-fade-out {
+      opacity: 0; transform: scale(0.8); pointer-events: none;
+    }
+    [data-anime-status].anime-fade-in { opacity: 0; transform: scale(0.8); }
+    [data-anime-status].anime-fade-in-active { opacity: 1; transform: scale(1); }
+  </style>
+
+  <!-- 过滤脚本 -->
+  <script is:inline>
+    if (typeof window.animeFilterEventListeners === 'undefined') {
+      window.animeFilterEventListeners = [];
+    }
+    
+    function initFilterButtons() {
+      const filterTags = document.querySelectorAll('.filter-tag');
+      window.animeFilterEventListeners.forEach(listener => {
+        const [element, type, handler] = listener;
+        element.removeEventListener(type, handler);
+      });
+      window.animeFilterEventListeners = [];
+      
+      filterTags.forEach(tag => {
+        const clickHandler = function() {
+          if (this.classList.contains('active')) return;
+          filterTags.forEach(t => t.classList.remove('active'));
+          this.classList.add('active');
+          
+          const status = this.getAttribute('data-status');
+          const animeItems = Array.from(document.querySelectorAll('[data-anime-status]'));
+          const firstPositions = new Map();
+          
+          animeItems.forEach(item => {
+            const rect = item.getBoundingClientRect();
+            firstPositions.set(item, { left: rect.left, top: rect.top });
+          });
+          
+          const itemsToHide = [], itemsToShow = [], itemsToKeep = [];
+          
+          animeItems.forEach(item => {
+            const itemStatus = item.getAttribute('data-anime-status');
+            const shouldShow = status === 'all' || itemStatus === status;
+            const isCurrentlyVisible = !item.classList.contains('anime-hidden');
+            
+            if (shouldShow) {
+              isCurrentlyVisible ? itemsToKeep.push(item) : itemsToShow.push(item);
+            } else {
+              if (isCurrentlyVisible) itemsToHide.push(item);
+            }
+          });
+          
+          itemsToHide.forEach(item => item.classList.add('anime-fade-out'));
+          
+          setTimeout(() => {
+            itemsToHide.forEach(item => {
+              item.classList.add('anime-hidden');
+              item.classList.remove('anime-fade-out');
+            });
+            itemsToShow.forEach(item => {
+              item.classList.remove('anime-hidden');
+              item.classList.add('anime-fade-in');
+              item.style.opacity = '0';
+              item.style.transform = 'scale(0.8)';
+              item.style.transition = 'none';
+            });
+            
+            requestAnimationFrame(() => {
+              const lastPositions = new Map();
+              [...itemsToKeep, ...itemsToShow].forEach(item => {
+                const rect = item.getBoundingClientRect();
+                lastPositions.set(item, { left: rect.left, top: rect.top });
+              });
+              
+              itemsToKeep.forEach(item => {
+                const first = firstPositions.get(item);
+                const last = lastPositions.get(item);
+                if (first && last) {
+                  const deltaX = first.left - last.left;
+                  const deltaY = first.top - last.top;
+                  item.style.transition = 'none';
+                  item.style.transform = `translate(${deltaX}px, ${deltaY}px)`;
+                }
+              });
+              
+              requestAnimationFrame(() => {
+                [...itemsToKeep, ...itemsToShow].forEach((item, index) => {
+                  setTimeout(() => {
+                    item.classList.add('anime-animating');
+                    if (itemsToKeep.includes(item)) {
+                      item.style.transition = '';
+                      item.style.transform = '';
+                    }
+                    if (itemsToShow.includes(item)) {
+                      item.classList.remove('anime-fade-in');
+                      item.classList.add('anime-fade-in-active');
+                      item.style.transition = '';
+                      item.style.opacity = '1';
+                      item.style.transform = 'scale(1)';
+                    }
+                  }, index * 20);
+                });
+                setTimeout(() => {
+                  [...itemsToKeep, ...itemsToShow].forEach(item => {
+                    item.classList.remove('anime-animating', 'anime-fade-in-active');
+                    item.style.transition = '';
+                    item.style.transform = '';
+                    item.style.opacity = '';
+                  });
+                }, 500 + (itemsToKeep.length + itemsToShow.length) * 20);
+              });
+            });
+          }, 300);
+        };
+        
+        tag.addEventListener('click', clickHandler);
+        window.animeFilterEventListeners.push([tag, 'click', clickHandler]);
+      });
+    }
+    
+    document.addEventListener('DOMContentLoaded', initFilterButtons);
+    if (typeof window !== 'undefined' && window.swup) {
+      window.swup.hooks.on('content:replace', () => setTimeout(initFilterButtons, 150));
+    }
+  </script>
+</MainGridLayout>

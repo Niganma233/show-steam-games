@@ -1,0 +1,514 @@
+---
+import ImageWrapper from "../components/misc/ImageWrapper.astro";
+import { sidebarLayoutConfig } from "../config";
+import MainGridLayout from "../layouts/MainGridLayout.astro";
+
+// --- ⬇️ 在这里配置你的游戏列表 ⬇️ ---
+const localGameList = [
+  {
+    title: "", //游戏名称
+    cover: "", //封面
+    status: "", //状态
+    rating: 5.0, //评分0-5
+    playtime: "1h", //游戏时长
+    description: "", //游戏简介
+    tags: ["",], //标签
+    link: "", //游戏链接
+    year: "" //游戏发售年份
+  },
+];
+
+// --- ⬆️ 配置结束 ⬆️ ---
+
+// 页面基础信息配置
+const PAGE_TITLE = "游戏库";
+const PAGE_SUBTITLE = "我的 Steam 游戏收藏与记录";
+
+// 检查是否为双侧边栏模式
+const isBothSidebarMode = sidebarLayoutConfig.position === "both";
+
+// 为了避免修改全局 i18n 文件，这里定义页面内部使用的文本
+const i18nLocal = {
+    filterAll: "全部",
+    statusPlaying: "正在玩",
+    statusCompleted: "已通关",
+    statusPlayed: "玩过/搁置",
+    statusPlanned: "想玩",
+    empty: "暂无游戏",
+    emptyDesc: "请在 games.astro 文件中添加你的游戏数据",
+};
+
+// 获取状态的样式和图标
+function getStatusInfo(status: string) {
+	switch (status) {
+		case "playing":
+			return {
+				text: i18nLocal.statusPlaying,
+				class: "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300",
+				icon: "▶",
+			};
+		case "completed":
+			return {
+				text: i18nLocal.statusCompleted,
+				class: "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-300",
+				icon: "🏆",
+			};
+		case "played":
+			return {
+				text: i18nLocal.statusPlayed,
+				class: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300",
+				icon: "💾",
+			};
+		case "planned":
+			return {
+				text: i18nLocal.statusPlanned,
+				class: "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300",
+				icon: "📅",
+			};
+		default:
+			return {
+				text: status,
+				class: "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300",
+				icon: "?",
+			};
+	}
+}
+
+// 统计数据
+const stats = {
+	total: localGameList.length,
+	playing: localGameList.filter((g) => g.status === "playing").length,
+	completed: localGameList.filter((g) => g.status === "completed").length,
+};
+---
+
+<MainGridLayout title={PAGE_TITLE} description={PAGE_SUBTITLE}>
+  <div class="flex w-full rounded-[var(--radius-large)] overflow-hidden relative min-h-32">
+    <div class="card-base z-10 px-9 py-6 relative w-full">
+      <!-- 页面标题区域 -->
+      <div class="relative w-full mb-8">
+        <div class="mb-6">
+          <h1 class="text-4xl font-bold text-black/90 dark:text-white/90 mb-2 relative
+                    before:w-1 before:h-8 before:rounded-md before:bg-[var(--primary)]
+                    before:absolute before:top-1/2 before:-translate-y-1/2 before:-left-4">
+            {PAGE_TITLE}
+          </h1>
+          <p class="text-black/75 dark:text-white/75">
+            {PAGE_SUBTITLE} · {stats.total} 款游戏 · {stats.playing} 正在玩
+          </p>
+        </div>
+        
+        <!-- 过滤按钮 -->
+        <div class="mb-6">
+          <div class="filter-container flex flex-wrap gap-2">
+            <button class="filter-tag active" data-status="all">{i18nLocal.filterAll}</button>
+            <button class="filter-tag" data-status="playing">{i18nLocal.statusPlaying}</button>
+            <button class="filter-tag" data-status="completed">{i18nLocal.statusCompleted}</button>
+            <button class="filter-tag" data-status="played">{i18nLocal.statusPlayed}</button>
+            <button class="filter-tag" data-status="planned">{i18nLocal.statusPlanned}</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- 游戏列表 Grid -->
+      <div class="mb-8">
+        {localGameList.length > 0 ? (
+          <div id="game-list-container" class={`game-grid-container grid gap-4 md:gap-6 list-mode ${
+            isBothSidebarMode ? "both-sidebar" : "single-sidebar"
+          }`}>
+            {localGameList.map(game => {
+              const statusInfo = getStatusInfo(game.status);
+              
+              return (
+                <div class="group relative bg-[var(--card-bg)] border border-[var(--line-divider)] rounded-[var(--radius-large)] overflow-hidden transition-all duration-300 hover:shadow-lg hover:scale-[1.02]" data-game-status={game.status}>
+                  <!-- 封面区域 - 2:3 比例 (Steam封面标准) -->
+                  <div class="relative aspect-[2/3] overflow-hidden bg-black/5 dark:bg-white/5">
+                    <a href={game.link} target="_blank" rel="noopener noreferrer" class="block w-full h-full">
+                      <ImageWrapper 
+                        src={game.cover} 
+                        alt={game.title}
+                        class="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
+                      />
+                      <!-- 悬停遮罩 -->
+                      <div class="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+                        <div class="absolute inset-0 flex items-center justify-center">
+                          <div class="w-12 h-12 rounded-full bg-white/90 flex items-center justify-center shadow-lg transform scale-0 group-hover:scale-100 transition-transform duration-300 delay-75">
+                            <svg class="w-6 h-6 text-black ml-1" fill="currentColor" viewBox="0 0 24 24">
+                              <path d="M8 5v14l11-7z"/>
+                            </svg>
+                          </div>
+                        </div>
+                      </div>
+                    </a>
+                    
+                    <!-- 左上角：状态标签 -->
+                    <div class={`absolute top-2 left-2 px-2 py-1 rounded-md text-xs font-medium backdrop-blur-md shadow-sm ${statusInfo.class}`}>
+                      <span class="mr-1">{statusInfo.icon}</span>
+                      <span>{statusInfo.text}</span>
+                    </div>
+                    
+                    <!-- 右上角：评分 -->
+                    {game.rating > 0 && (
+                      <div class="absolute top-2 right-2 bg-black/70 text-white px-2 py-1 rounded-md text-xs font-medium flex items-center gap-1 backdrop-blur-md">
+                        <svg class="w-3 h-3 text-yellow-400" fill="currentColor" viewBox="0 0 20 20">
+                          <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"/>
+                        </svg>
+                        <span>{game.rating}</span>
+                      </div>
+                    )}
+
+                    <!-- 底部：时长信息 (仅在非Planned状态显示) -->
+                    {game.status !== 'planned' && (
+                        <div class="absolute bottom-0 left-0 right-0 p-2 bg-gradient-to-t from-black/80 to-transparent">
+                             <div class="text-white text-xs font-medium flex justify-between px-1">
+                                <span>{game.year}</span>
+                                <span>{game.playtime}</span>
+                             </div>
+                        </div>
+                    )}
+                  </div>
+                  
+                  <!-- 内容区域 -->
+                  <div class="p-3">
+                    <h3 class="text-sm font-bold text-black/90 dark:text-white/90 mb-1 line-clamp-1 leading-tight" title={game.title}>{game.title}</h3>
+                    <p class="text-black/60 dark:text-white/60 text-xs mb-2 line-clamp-2 h-8 leading-4">{game.description}</p>
+                    
+                    <!-- 标签 -->
+                    <div class="flex flex-wrap gap-1 mt-1">
+                      {game.tags && game.tags.slice(0, 3).map(tag => (
+                        <span class="px-1.5 py-0.5 bg-[var(--btn-regular-bg)] text-black/60 dark:text-white/60 rounded text-[10px]">{tag}</span>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <div class="text-center py-12">
+            <div class="text-5xl mb-4">🎮</div>
+            <h3 class="text-xl font-medium text-black/80 dark:text-white/80 mb-2">
+              {i18nLocal.empty}
+            </h3>
+            <p class="text-black/60 dark:text-white/60">
+              {i18nLocal.emptyDesc}
+            </p>
+          </div>
+        )}
+      </div>
+    </div>
+  </div>
+
+<script is:inline define:vars={{ isBothSidebarMode }}>
+// 布局管理与动画脚本
+(function() {
+    const CONTAINER_ID = "game-list-container";
+    const ITEM_ATTR = "data-game-status";
+
+    // 初始化延迟，等待DOM就绪
+    setTimeout(() => {
+        const container = document.getElementById(CONTAINER_ID);
+        if (!container) return;
+
+        // 初始化布局管理器
+        if (typeof window.layoutManager !== 'undefined') {
+            window.layoutManager.init(isBothSidebarMode);
+            const currentLayout = window.layoutManager.getLayout();
+            updateListLayout(currentLayout);
+            window.layoutManager.checkScreenSizeAndAdjust();
+        } else {
+            // 备用初始化
+            setTimeout(() => {
+                if (typeof window.layoutManager !== 'undefined') {
+                    window.layoutManager.init(isBothSidebarMode);
+                    updateListLayout(window.layoutManager.getLayout());
+                }
+            }, 300);
+        }
+    }, 50);
+
+    function updateListLayout(layout) {
+        const container = document.getElementById(CONTAINER_ID);
+        if (!container) return;
+
+        // FLIP 动画 - 记录起始位置
+        const items = Array.from(document.querySelectorAll(`[${ITEM_ATTR}]`));
+        const firstPositions = new Map();
+        items.forEach(item => {
+            const rect = item.getBoundingClientRect();
+            firstPositions.set(item, { left: rect.left, top: rect.top });
+        });
+        
+        // 切换 Class
+        container.classList.remove("list-mode", "grid-mode");
+        const rightSidebar = document.querySelector('.right-sidebar-container');
+        const mainGrid = document.getElementById('main-grid');
+
+        if (layout === "grid") {
+            container.classList.add("grid-mode");
+            container.classList.add("grid", "grid-cols-1", "md:grid-cols-2", "lg:grid-cols-3");
+            container.classList.remove("flex", "flex-col");
+            
+            if (rightSidebar) {
+                rightSidebar.style.display = 'none';
+                rightSidebar.classList.add('hidden-in-grid-mode');
+            }
+            if (mainGrid) {
+                mainGrid.style.gridTemplateColumns = '17.5rem 1fr';
+                mainGrid.classList.add('two-column-layout');
+            }
+        } else {
+            container.classList.add("list-mode");
+            container.classList.add("flex", "flex-col");
+            container.classList.remove("grid", "grid-cols-1", "md:grid-cols-2", "lg:grid-cols-3");
+            
+            if (rightSidebar) {
+                rightSidebar.style.display = '';
+                rightSidebar.classList.remove('hidden-in-grid-mode');
+            }
+            if (mainGrid) {
+                mainGrid.style.gridTemplateColumns = '';
+                mainGrid.classList.remove('two-column-layout');
+            }
+        }
+
+        // FLIP 动画 - 播放
+        requestAnimationFrame(() => {
+            const lastPositions = new Map();
+            items.forEach(item => {
+                const rect = item.getBoundingClientRect();
+                lastPositions.set(item, { left: rect.left, top: rect.top });
+            });
+            
+            items.forEach(item => {
+                const first = firstPositions.get(item);
+                const last = lastPositions.get(item);
+                if (first && last) {
+                    const deltaX = first.left - last.left;
+                    const deltaY = first.top - last.top;
+                    item.style.transition = 'none';
+                    item.style.transform = `translate(${deltaX}px, ${deltaY}px)`;
+                }
+            });
+            
+            requestAnimationFrame(() => {
+                items.forEach((item, index) => {
+                    setTimeout(() => {
+                        item.classList.add('card-animating');
+                        item.style.transition = '';
+                        item.style.transform = '';
+                    }, index * 20);
+                });
+                setTimeout(() => {
+                    items.forEach(item => {
+                        item.classList.remove('card-animating');
+                        item.style.transition = '';
+                        item.style.transform = '';
+                    });
+                }, 500 + items.length * 20);
+            });
+        });
+    }
+
+    window.addEventListener("layoutChange", (event) => updateListLayout(event.detail.layout));
+})();
+</script>
+
+<style>
+    .card-base { container-type: inline-size; }
+    
+    /* 响应式网格列数配置 */
+    .game-grid-container {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    
+    .game-grid-container.single-sidebar {
+        @container (min-width: 900px) { grid-template-columns: repeat(5, 1fr); }
+        @container (min-width: 600px) and (max-width: 899px) { grid-template-columns: repeat(3, 1fr); }
+        @container (max-width: 599px) { grid-template-columns: repeat(2, 1fr); }
+    }
+    
+    .game-grid-container.both-sidebar {
+        @container (min-width: 950px) { grid-template-columns: repeat(5, 1fr); }
+        @container (min-width: 650px) and (max-width: 949px) { grid-template-columns: repeat(4, 1fr); }
+        @container (min-width: 480px) and (max-width: 649px) { grid-template-columns: repeat(3, 1fr); }
+        @container (max-width: 479px) { grid-template-columns: repeat(2, 1fr); }
+    }
+    
+    /* 过滤器样式 */
+    .filter-container { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+    .filter-tag {
+        padding: 0.5rem 1rem;
+        border: 1px solid var(--line-divider);
+        border-radius: var(--radius-large);
+        background: var(--btn-regular-bg);
+        color: var(--btn-content);
+        font-size: 0.875rem;
+        font-weight: 500;
+        cursor: pointer;
+        transition: all 0.2s ease;
+    }
+    .filter-tag:hover:not(.active) {
+        background: var(--btn-hover-bg);
+        border-color: var(--primary);
+        transform: translateY(-1px);
+    }
+    .filter-tag.active {
+        background: var(--primary);
+        color: white;
+        border-color: var(--primary);
+    }
+    .filter-tag.active:hover {
+        background: var(--primary) !important;
+        color: white !important;
+        border-color: var(--primary) !important;
+    }
+
+    /* 卡片动画样式 */
+    [data-game-status] { transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1); }
+    
+    #game-list-container.grid-mode [data-game-status]:hover {
+        transform: translateY(-8px) scale(1.02);
+        box-shadow: 0 12px 24px rgba(0, 0, 0, 0.15);
+        z-index: 10;
+    }
+    #game-list-container.list-mode [data-game-status]:hover {
+        transform: translateX(8px) scale(1.01);
+        box-shadow: 0 8px 16px rgba(0, 0, 0, 0.1);
+        z-index: 10;
+    }
+
+    /* 过滤动画辅助类 */
+    [data-game-status].hidden { display: none; }
+    [data-game-status].card-animating {
+        transition: transform 0.5s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    [data-game-status].fade-out { opacity: 0; transform: scale(0.8); pointer-events: none; }
+    [data-game-status].fade-in { opacity: 0; transform: scale(0.8); }
+    [data-game-status].fade-in-active { opacity: 1; transform: scale(1); }
+</style>
+
+<script is:inline>
+// 过滤逻辑脚本
+if (typeof window.gameFilterEventListeners === 'undefined') {
+    window.gameFilterEventListeners = [];
+}
+
+function initFilterButtons() {
+    const filterTags = document.querySelectorAll('.filter-tag');
+    window.gameFilterEventListeners.forEach(listener => {
+        const [element, type, handler] = listener;
+        element.removeEventListener(type, handler);
+    });
+    window.gameFilterEventListeners = [];
+    
+    filterTags.forEach(tag => {
+        const clickHandler = function() {
+            if (this.classList.contains('active')) return;
+            filterTags.forEach(t => t.classList.remove('active'));
+            this.classList.add('active');
+            
+            const status = this.getAttribute('data-status');
+            const items = Array.from(document.querySelectorAll('[data-game-status]'));
+            const firstPositions = new Map();
+            
+            // 记录初始位置
+            items.forEach(item => {
+                const rect = item.getBoundingClientRect();
+                firstPositions.set(item, { left: rect.left, top: rect.top });
+            });
+            
+            const itemsToHide = [], itemsToShow = [], itemsToKeep = [];
+            
+            items.forEach(item => {
+                const itemStatus = item.getAttribute('data-game-status');
+                const shouldShow = status === 'all' || itemStatus === status;
+                const isVisible = !item.classList.contains('hidden');
+                
+                if (shouldShow) {
+                    isVisible ? itemsToKeep.push(item) : itemsToShow.push(item);
+                } else {
+                    if (isVisible) itemsToHide.push(item);
+                }
+            });
+            
+            // 动画过程
+            itemsToHide.forEach(item => item.classList.add('fade-out'));
+            
+            setTimeout(() => {
+                itemsToHide.forEach(item => {
+                    item.classList.add('hidden');
+                    item.classList.remove('fade-out');
+                });
+                itemsToShow.forEach(item => {
+                    item.classList.remove('hidden');
+                    item.classList.add('fade-in');
+                    item.style.opacity = '0';
+                    item.style.transform = 'scale(0.8)';
+                    item.style.transition = 'none';
+                });
+                
+                requestAnimationFrame(() => {
+                    // FLIP 核心：计算位移并应用
+                    const lastPositions = new Map();
+                    [...itemsToKeep, ...itemsToShow].forEach(item => {
+                        const rect = item.getBoundingClientRect();
+                        lastPositions.set(item, { left: rect.left, top: rect.top });
+                    });
+                    
+                    itemsToKeep.forEach(item => {
+                        const first = firstPositions.get(item);
+                        const last = lastPositions.get(item);
+                        if (first && last) {
+                            const deltaX = first.left - last.left;
+                            const deltaY = first.top - last.top;
+                            item.style.transition = 'none';
+                            item.style.transform = `translate(${deltaX}px, ${deltaY}px)`;
+                        }
+                    });
+                    
+                    // 播放动画
+                    requestAnimationFrame(() => {
+                        [...itemsToKeep, ...itemsToShow].forEach((item, index) => {
+                            setTimeout(() => {
+                                item.classList.add('card-animating');
+                                if (itemsToKeep.includes(item)) {
+                                    item.style.transition = '';
+                                    item.style.transform = '';
+                                }
+                                if (itemsToShow.includes(item)) {
+                                    item.classList.remove('fade-in');
+                                    item.classList.add('fade-in-active');
+                                    item.style.transition = '';
+                                    item.style.opacity = '1';
+                                    item.style.transform = 'scale(1)';
+                                }
+                            }, index * 10);
+                        });
+                        
+                        setTimeout(() => {
+                            [...itemsToKeep, ...itemsToShow].forEach(item => {
+                                item.classList.remove('card-animating', 'fade-in-active');
+                                item.style.transition = '';
+                                item.style.transform = '';
+                                item.style.opacity = '';
+                            });
+                        }, 500 + (itemsToKeep.length + itemsToShow.length) * 10);
+                    });
+                });
+            }, 300);
+        };
+        
+        tag.addEventListener('click', clickHandler);
+        window.gameFilterEventListeners.push([tag, 'click', clickHandler]);
+    });
+}
+
+document.addEventListener('DOMContentLoaded', initFilterButtons);
+if (typeof window !== 'undefined' && window.swup) {
+    window.swup.hooks.on('content:replace', () => setTimeout(initFilterButtons, 150));
+}
+</script>
+</MainGridLayout>
